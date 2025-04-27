@@ -1,4 +1,4 @@
-# src/utils.py
+# scripts/utils.py
 
 import os
 import pandas as pd
@@ -8,9 +8,16 @@ from bs4 import BeautifulSoup
 import re
 import joblib
 
-# Load your trained ML model and vectorizer
-ml_model = joblib.load("../models/sentiment_model.pkl")
-vectorizer = joblib.load("../models/vectorizer.pkl")
+def load_model(model_path):
+    """Load a model from disk."""
+    return joblib.load(model_path)
+
+def preprocess_text(text):
+    """Preprocess text for ML model (basic cleanup)."""
+    text = text.lower()
+    text = re.sub(r'[^a-z\s]', '', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
 def load_data(user_path):
     """Load and combine all streaming history JSON files for a user."""
@@ -57,7 +64,7 @@ def analyze_lyrics_sentiment_vader(lyrics):
     sentiment = sia.polarity_scores(lyrics)
     return sentiment
 
-def predict_lyrics_sentiment_ml(lyrics):
+def predict_lyrics_sentiment_ml(lyrics, vectorizer, ml_model):
     """Predict sentiment using trained ML model."""
     lyrics_vector = vectorizer.transform([lyrics])
     prediction = ml_model.predict(lyrics_vector)
