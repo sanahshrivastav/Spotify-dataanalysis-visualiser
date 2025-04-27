@@ -1,23 +1,14 @@
-# --- main.py ---
-import os
+# src/main.py
+
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
-from utils import load_data, preprocess_data, save_data, get_lyrics, analyze_lyrics_sentiment
-import nltk
-nltk.download('vader_lexicon')
-
-
-# Set base directory relative to this script
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-data_dir = os.path.join(BASE_DIR, "data")
-output_dir = os.path.join(BASE_DIR, "output")
+from utils import load_data, preprocess_data, save_data, get_lyrics, analyze_lyrics_sentiment_vader, predict_lyrics_sentiment_ml
 
 # Paths to user data folders
 data_paths = {
-    "sanah": os.path.join(data_dir, "sanah"),
-    "kabir": os.path.join(data_dir, "kabir"),
-    "alvin": os.path.join(data_dir, "alvin")
+    "sanah": "../data/sanah",
+    "kabir": "../data/kabir",
+    "alvin": "../data/alvin"
 }
 
 # Load and preprocess data for all users
@@ -26,13 +17,40 @@ for user, path in data_paths.items():
     print(f"Loading data for {user}...")
     raw_data = load_data(path)
     preprocessed_data = preprocess_data(raw_data, user)
+
+    # Fetch lyrics and perform sentiment analysis
+    lyrics_list = []
+    vader_sentiment_list = []
+    ml_sentiment_list = []
+
+    for idx, row in preprocessed_data.iterrows():
+        title = row['trackName']
+        artist = row['artistName']
+        lyrics = get_lyrics(title, artist)
+        if lyrics:
+            lyrics_list.append(lyrics)
+            vader_sentiment = analyze_lyrics_sentiment_vader(lyrics)
+            vader_sentiment_list.append(vader_sentiment['compound'])
+            ml_sentiment = predict_lyrics_sentiment_ml(lyrics)
+            ml_sentiment_list.append(ml_sentiment)
+        else:
+            lyrics_list.append(None)
+            vader_sentiment_list.append(None)
+            ml_sentiment_list.append(None)
+
+    preprocessed_data['lyrics'] = lyrics_list
+    preprocessed_data['vader_sentiment'] = vader_sentiment_list
+    preprocessed_data['ml_sentiment'] = ml_sentiment_list
+
     all_data.append(preprocessed_data)
 
 # Combine all user data into a single DataFrame
 combined_data = pd.concat(all_data, ignore_index=True)
-save_data(combined_data, os.path.join(output_dir, "combined_streaming_data.csv"))
 
-# Analyze listening habits by hour
+# Save combined data to CSV
+save_data(combined_data, "../output/combined_streaming_data_with_sentiment.csv")
+
+# Plot listening habits by hour
 listening_by_hour = combined_data.groupby(['hour', 'user']).size().unstack()
 listening_by_hour.plot(kind='line', figsize=(10, 6))
 plt.title('Listening Habits by Hour')
@@ -40,7 +58,7 @@ plt.xlabel('Hour of Day')
 plt.ylabel('Tracks Played')
 plt.legend(title='User')
 plt.grid()
-plt.savefig(os.path.join(output_dir, "listening_habits_by_hour.png"))
+plt.savefig('../output/listening_habits_by_hour.png')
 plt.show()
 
 # Analyze top artists
@@ -53,34 +71,5 @@ plt.xlabel('Artist')
 plt.ylabel('Play Count')
 plt.legend(title='User')
 plt.grid()
-plt.savefig(os.path.join(output_dir, "top_artists_comparison.png"))
-plt.show()
-
-# ----- SENTIMENT ANALYSIS BLOCK -----
-print("Running sentiment analysis based on song lyrics...")
-sentiments = []
-for idx, row in combined_data.iterrows():
-    title = row.get('trackName')
-    artist = row.get('artistName')
-    lyrics = get_lyrics(title, artist)
-    if lyrics:
-        sentiment = analyze_lyrics_sentiment(lyrics)
-        sentiments.append(sentiment['compound'])
-    else:
-        sentiments.append(None)
-
-combined_data['sentiment_score'] = sentiments
-combined_data.to_csv(os.path.join(output_dir, "combined_streaming_with_sentiment.csv"), index=False)
-
-# Plot sentiment over time
-combined_data['endTime'] = pd.to_datetime(combined_data['endTime'])
-combined_data = combined_data.dropna(subset=['sentiment_score'])
-plt.figure(figsize=(12, 6))
-sns.lineplot(x='endTime', y='sentiment_score', hue='user', data=combined_data)
-plt.title("Sentiment Score Over Time per User")
-plt.xlabel("Time")
-plt.ylabel("Sentiment Score")
-plt.xticks(rotation=45)
-plt.tight_layout()
-plt.savefig(os.path.join(output_dir, "sentiment_over_time.png"))
+plt.savefig('../output/top_artists_comparison.png')
 plt.show()

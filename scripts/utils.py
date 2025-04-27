@@ -1,14 +1,16 @@
+# src/utils.py
+
 import os
 import pandas as pd
 import requests
 from nltk.sentiment import SentimentIntensityAnalyzer
 from bs4 import BeautifulSoup
 import re
+import joblib
 
-GENIUS_API_TOKEN = os.getenv("GENIUS_API_TOKEN")  # Optional: Store this as environment variable
-
-# Caching lyrics locally to avoid repeated requests
-lyrics_cache = {}
+# Load your trained ML model and vectorizer
+ml_model = joblib.load("../models/sentiment_model.pkl")
+vectorizer = joblib.load("../models/vectorizer.pkl")
 
 def load_data(user_path):
     """Load and combine all streaming history JSON files for a user."""
@@ -28,19 +30,14 @@ def save_data(data, output_path):
     data.to_csv(output_path, index=False)
 
 def get_lyrics(title, artist):
-    """Fetch song lyrics using Genius API or scraping fallback."""
-    cache_key = f"{artist}_{title}"
-    if cache_key in lyrics_cache:
-        return lyrics_cache[cache_key]
-
-    query = f"{title} {artist}"
-    headers = {"Authorization": f"Bearer {GENIUS_API_TOKEN}"} if GENIUS_API_TOKEN else {}
-    search_url = f"https://genius.com/api/search/multi?per_page=1&q={query}"
-    response = requests.get(search_url, headers=headers)
+    """Fetch song lyrics using Genius scraping."""
+    base_url = "https://genius.com"
+    search_url = f"https://genius.com/api/search/multi?per_page=1&q={title} {artist}"
+    response = requests.get(search_url)
 
     try:
         path = response.json()['response']['sections'][0]['hits'][0]['result']['path']
-        song_url = f"https://genius.com{path}"
+        song_url = base_url + path
         page = requests.get(song_url)
         soup = BeautifulSoup(page.text, "html.parser")
         lyrics_div = soup.find("div", class_="lyrics") or soup.find_all("div", class_=re.compile("^Lyrics__Container"))
@@ -50,14 +47,18 @@ def get_lyrics(title, artist):
         else:
             lyrics = lyrics_div.get_text(separator="\n") if lyrics_div else None
 
-        if lyrics:
-            lyrics_cache[cache_key] = lyrics.strip()
-            return lyrics.strip()
-        return None
+        return lyrics.strip() if lyrics else None
     except Exception:
         return None
 
-def analyze_lyrics_sentiment(lyrics):
+def analyze_lyrics_sentiment_vader(lyrics):
     """Analyze sentiment of lyrics using NLTK's VADER."""
     sia = SentimentIntensityAnalyzer()
-    return sia.polarity_scores(lyrics)
+    sentiment = sia.polarity_scores(lyrics)
+    return sentiment
+
+def predict_lyrics_sentiment_ml(lyrics):
+    """Predict sentiment using trained ML model."""
+    lyrics_vector = vectorizer.transform([lyrics])
+    prediction = ml_model.predict(lyrics_vector)
+    return prediction[0]
